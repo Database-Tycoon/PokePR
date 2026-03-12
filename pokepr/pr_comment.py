@@ -5,12 +5,15 @@ GitHub PR comment management for posting and updating PokéPR comments.
 from typing import Optional
 import requests
 
-from pokepr.pokemon import Pokemon
+from pokepr.pokemon import Pokemon, TYPE_EMOJI
 
 
 REQUEST_TIMEOUT = 10
 GITHUB_API_BASE = "https://api.github.com"
 MARKER = "<!-- pokepr-marker -->"
+
+STAT_ORDER = ["HP", "Attack", "Defense", "Sp. Atk", "Sp. Def", "Speed"]
+STAT_MAX = 255  # theoretical max for bar scaling
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -93,15 +96,45 @@ def _footer(gist_html_url: Optional[str]) -> str:
     return powered_by
 
 
-def _pokedex_entry(pokemon: Pokemon, status_line: str, footer: str) -> str:
-    """
-    Shared Pokédex-entry layout used by all three comment states.
+def _type_str(types: list[str]) -> str:
+    """Render types as emoji labels, e.g. '🌿 Grass · ☠️ Poison'"""
+    return " &nbsp;·&nbsp; ".join(
+        TYPE_EMOJI.get(t, t.title()) for t in types
+    )
 
-    The image is always rendered using an HTML <img> tag so it is guaranteed
-    to appear even if GitHub's markdown renderer strips bare image syntax.
-    """
-    types_str = " · ".join(f"**{t}**" for t in pokemon.types)
 
+def _stat_bar(value: int, max_val: int = STAT_MAX, width: int = 10) -> str:
+    """Render a simple block bar, e.g. '████░░░░░░ 45'"""
+    filled = round(value / max_val * width)
+    return "█" * filled + "░" * (width - filled) + f" {value}"
+
+
+def _abilities_str(pokemon: Pokemon) -> str:
+    parts = []
+    for ability in pokemon.abilities:
+        if ability.is_hidden:
+            parts.append(f"{ability.name} *(Hidden)*")
+        else:
+            parts.append(ability.name)
+    return " &nbsp;·&nbsp; ".join(parts)
+
+
+def _stats_table(pokemon: Pokemon) -> str:
+    rows = []
+    total = 0
+    for stat in STAT_ORDER:
+        val = pokemon.base_stats.get(stat, 0)
+        total += val
+        rows.append(f"| {stat} | {_stat_bar(val)} |")
+    rows.append(f"| **Total** | **{total}** |")
+    header = "| Stat | |\n|------|---|"
+    return header + "\n" + "\n".join(rows)
+
+
+def build_encounter_comment(
+    pokemon: Pokemon, gist_html_url: Optional[str] = None
+) -> str:
+    """Brief first-encounter comment — just enough to know what appeared."""
     return f"""{MARKER}
 <img align="right" src="{pokemon.sprite_url}" width="175" alt="{pokemon.name}"/>
 
@@ -109,38 +142,61 @@ def _pokedex_entry(pokemon: Pokemon, status_line: str, footer: str) -> str:
 ## {pokemon.name}
 ##### The {pokemon.genus}
 
-{types_str} &nbsp;·&nbsp; {pokemon.height_m:.1f} m &nbsp;·&nbsp; {pokemon.weight_kg:.1f} kg
+{_type_str(pokemon.types)} &nbsp;·&nbsp; {pokemon.height_m:.1f} m &nbsp;·&nbsp; {pokemon.weight_kg:.1f} kg
 
 > *{pokemon.flavor_text}*
 
 ---
-{status_line}
+⚔️ &nbsp; A wild **{pokemon.name}** appeared! Merge this PR to catch it — close it and watch it flee.
 
-{footer}"""
-
-
-def build_encounter_comment(
-    pokemon: Pokemon, gist_html_url: Optional[str] = None
-) -> str:
-    status = (
-        f"⚔️ &nbsp; A wild **{pokemon.name}** appeared! "
-        f"Merge this PR to catch it — close it and watch it flee."
-    )
-    return _pokedex_entry(pokemon, status, _footer(gist_html_url))
+{_footer(gist_html_url)}"""
 
 
 def build_caught_comment(
     pokemon: Pokemon, gist_html_url: Optional[str] = None
 ) -> str:
-    status = f"✅ &nbsp; Gotcha! **{pokemon.name}** was caught and added to your Pokédex!"
-    return _pokedex_entry(pokemon, status, _footer(gist_html_url))
+    """Full Pokédex entry posted when a PR is merged — abilities, stats, the works."""
+    return f"""{MARKER}
+<img align="right" src="{pokemon.sprite_url}" width="175" alt="{pokemon.name}"/>
+
+### 🔴 &nbsp; Pokédex #{pokemon.number:03d} &nbsp; — &nbsp; ✅ Caught!
+## {pokemon.name}
+##### The {pokemon.genus}
+
+{_type_str(pokemon.types)} &nbsp;·&nbsp; {pokemon.height_m:.1f} m &nbsp;·&nbsp; {pokemon.weight_kg:.1f} kg
+
+> *{pokemon.flavor_text}*
+
+**Abilities:** {_abilities_str(pokemon)}
+
+{_stats_table(pokemon)}
+
+---
+🎉 &nbsp; Gotcha! **{pokemon.name}** was caught and registered in your Pokédex!
+
+{_footer(gist_html_url)}"""
 
 
 def build_fled_comment(
     pokemon: Pokemon, gist_html_url: Optional[str] = None
 ) -> str:
-    status = (
-        f"💨 &nbsp; **{pokemon.name}** broke free and fled! "
-        f"It has been marked as **seen** in your Pokédex."
-    )
-    return _pokedex_entry(pokemon, status, _footer(gist_html_url))
+    """Full Pokédex entry posted when a PR is closed without merging."""
+    return f"""{MARKER}
+<img align="right" src="{pokemon.sprite_url}" width="175" alt="{pokemon.name}"/>
+
+### 🔴 &nbsp; Pokédex #{pokemon.number:03d} &nbsp; — &nbsp; 👀 Seen
+## {pokemon.name}
+##### The {pokemon.genus}
+
+{_type_str(pokemon.types)} &nbsp;·&nbsp; {pokemon.height_m:.1f} m &nbsp;·&nbsp; {pokemon.weight_kg:.1f} kg
+
+> *{pokemon.flavor_text}*
+
+**Abilities:** {_abilities_str(pokemon)}
+
+{_stats_table(pokemon)}
+
+---
+💨 &nbsp; **{pokemon.name}** broke free and fled! It has been marked as seen in your Pokédex.
+
+{_footer(gist_html_url)}"""
