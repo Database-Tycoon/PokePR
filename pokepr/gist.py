@@ -7,7 +7,7 @@ import json
 import requests
 from typing import Any
 
-from pokepr.pokemon import Pokemon
+from pokepr.pokemon import Pokemon, TYPE_EMOJI
 
 
 REQUEST_TIMEOUT = 10
@@ -105,7 +105,7 @@ def _build_pokedex_md(pokedex: dict[str, Any], gist_html_url: str) -> str:
         num = entry.get("number", 0)
         name = entry.get("name", "Unknown")
         types = entry.get("types", [])
-        type_str = " / ".join(types)
+        type_str = " / ".join(TYPE_EMOJI.get(t, t.title()) for t in types)
         lines.append(f"| {num:03d} | {name} | {type_str} |")
 
     if not caught:
@@ -123,7 +123,7 @@ def _build_pokedex_md(pokedex: dict[str, Any], gist_html_url: str) -> str:
         num = entry.get("number", 0)
         name = entry.get("name", "Unknown")
         types = entry.get("types", [])
-        type_str = " / ".join(types)
+        type_str = " / ".join(TYPE_EMOJI.get(t, t.title()) for t in types)
         lines.append(f"| {num:03d} | {name} | {type_str} |")
 
     if not seen:
