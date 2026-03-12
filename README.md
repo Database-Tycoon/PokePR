@@ -42,7 +42,46 @@ The action posts a comment automatically on every PR open, reopen, and close eve
 
 You can track which Pokémon you have seen and caught across all your PRs using a GitHub Gist. The Gist will contain a `pokedex.json` file and a `POKEDEX.md` table you can share.
 
-### Setup
+Once configured, every PR comment will include a **View Pokédex** link pointing directly to your Gist, and the action will automatically update it as you encounter, catch, and miss Pokémon.
+
+### Setup via GitHub CLI
+
+Most of this can be done entirely from the terminal with `gh`.
+
+**Step 1 — Create the Gist**
+
+```bash
+gh gist create --desc "My PokéPR Pokédex" --public
+```
+
+Note the Gist ID from the URL it prints — it's the hash at the end.
+
+**Step 2 — Create a Personal Access Token**
+
+This is the one step that requires the browser. Go to:
+
+> GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+
+Generate a new token with only the `gist` scope selected.
+
+**Step 3 — Add both secrets to your repository**
+
+```bash
+gh secret set POKEDEX_GIST_ID --body "your-gist-id-here" --repo owner/repo
+gh secret set POKEDEX_GIST_TOKEN --body "your-token-here" --repo owner/repo
+```
+
+**Step 4 — Update your workflow**
+
+```yaml
+- uses: Database-Tycoon/PokePR@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    gist-id: ${{ secrets.POKEDEX_GIST_ID }}
+    gist-token: ${{ secrets.POKEDEX_GIST_TOKEN }}
+```
+
+### Setup via GitHub web UI
 
 **Step 1 — Create a Gist**
 
@@ -63,17 +102,7 @@ In your repository settings under Secrets and variables → Actions, add two sec
 - `POKEDEX_GIST_ID` — the Gist ID from step 1
 - `POKEDEX_GIST_TOKEN` — the token from step 2
 
-**Step 4 — Update your workflow**
-
-```yaml
-- uses: Database-Tycoon/PokePR@v1
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    gist-id: ${{ secrets.POKEDEX_GIST_ID }}
-    gist-token: ${{ secrets.POKEDEX_GIST_TOKEN }}
-```
-
-Once configured, every PR comment will include a link to your Pokédex Gist, and the action will automatically update it as you encounter, catch, and miss Pokémon.
+**Step 4 — Update your workflow** (same as above)
 
 ---
 
