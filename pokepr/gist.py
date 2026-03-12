@@ -5,6 +5,7 @@ GitHub Gist Pokédex tracking — stores caught/seen Pokémon as JSON and markdo
 import copy
 import json
 import requests
+from datetime import datetime, timezone
 from typing import Any
 
 from pokepr.pokemon import Pokemon, TYPE_EMOJI
@@ -26,22 +27,25 @@ def _auth_headers(token: str) -> dict[str, str]:
     }
 
 
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _format_dt(iso: str) -> str:
+    """Format an ISO timestamp as a readable date, e.g. 'Mar 12 2026'."""
+    try:
+        dt = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ")
+        return dt.strftime("%b %-d %Y")
+    except Exception:
+        return iso
+
+
 def load_pokedex(gist_id: str, token: str) -> tuple[dict[str, Any], str]:
     """
     Load the Pokédex data from a GitHub Gist.
 
-    Args:
-        gist_id: The ID of the GitHub Gist.
-        token: A GitHub token with gist scope.
-
     Returns:
         A tuple of (pokedex_data, gist_html_url).
-        pokedex_data has keys "caught" and "seen", each a list of dicts.
-        If the pokedex.json file does not exist in the gist, returns an empty structure.
-
-    Raises:
-        requests.RequestException: On network errors.
-        ValueError: If the gist cannot be fetched.
     """
     resp = requests.get(
         f"{GIST_API_BASE}/{gist_id}",
@@ -71,9 +75,8 @@ def load_pokedex(gist_id: str, token: str) -> tuple[dict[str, Any], str]:
     try:
         pokedex = raw_resp.json()
     except json.JSONDecodeError:
-        pokedex = dict(EMPTY_POKEDEX)
+        pokedex = copy.deepcopy(EMPTY_POKEDEX)
 
-    # Ensure expected keys exist
     pokedex.setdefault("caught", [])
     pokedex.setdefault("seen", [])
 
@@ -81,24 +84,32 @@ def load_pokedex(gist_id: str, token: str) -> tuple[dict[str, Any], str]:
 
 
 def _build_pokedex_md(pokedex: dict[str, Any], gist_html_url: str) -> str:
-    """Generate the POKEDEX.md markdown content from the current Pokédex data."""
     caught = pokedex.get("caught", [])
     seen = pokedex.get("seen", [])
 
     caught_count = len(caught)
     seen_count = len(seen)
 
+    def _pr_link(entry: dict, key_url: str, key_at: str) -> str:
+        url = entry.get(key_url, "")
+        at = entry.get(key_at, "")
+        if url and at:
+            return f"[{_format_dt(at)}]({url})"
+        elif url:
+            return f"[link]({url})"
+        return "—"
+
     lines: list[str] = [
-        "# \U0001f4d6 My PokéPR Pokédex",
+        "# 📖 My PokéPR Pokédex",
         "",
         f"**Caught**: {caught_count} | "
         f"**Seen**: {seen_count} (not caught) | "
-        f"*Powered by [pokepr](https://github.com/Database-Tycoon/PokePR)*",
+        f"*Powered by [PokéPR](https://github.com/Database-Tycoon/PokePR)*",
         "",
-        f"## \u2705 Caught ({caught_count})",
+        f"## ✅ Caught ({caught_count})",
         "",
-        "| # | Name | Type |",
-        "|---|------|------|",
+        "| # | Name | Type | First Seen | Caught |",
+        "|---|------|------|------------|--------|",
     ]
 
     for entry in caught:
@@ -106,17 +117,19 @@ def _build_pokedex_md(pokedex: dict[str, Any], gist_html_url: str) -> str:
         name = entry.get("name", "Unknown")
         types = entry.get("types", [])
         type_str = " / ".join(TYPE_EMOJI.get(t, t.title()) for t in types)
-        lines.append(f"| {num:03d} | {name} | {type_str} |")
+        seen_link = _pr_link(entry, "seen_pr", "seen_at")
+        caught_link = _pr_link(entry, "caught_pr", "caught_at")
+        lines.append(f"| {num:03d} | {name} | {type_str} | {seen_link} | {caught_link} |")
 
     if not caught:
-        lines.append("| — | *None yet* | — |")
+        lines.append("| — | *None yet* | — | — | — |")
 
     lines += [
         "",
-        f"## \U0001f440 Seen ({seen_count})",
+        f"## 👀 Seen ({seen_count})",
         "",
-        "| # | Name | Type |",
-        "|---|------|------|",
+        "| # | Name | Type | First Seen |",
+        "|---|------|------|------------|",
     ]
 
     for entry in seen:
@@ -124,15 +137,23 @@ def _build_pokedex_md(pokedex: dict[str, Any], gist_html_url: str) -> str:
         name = entry.get("name", "Unknown")
         types = entry.get("types", [])
         type_str = " / ".join(TYPE_EMOJI.get(t, t.title()) for t in types)
-        lines.append(f"| {num:03d} | {name} | {type_str} |")
+        seen_link = _pr_link(entry, "seen_pr", "seen_at")
+        lines.append(f"| {num:03d} | {name} | {type_str} | {seen_link} |")
 
     if not seen:
-        lines.append("| — | *None yet* | — |")
+        lines.append("| — | *None yet* | — | — |")
 
     return "\n".join(lines) + "\n"
 
 
-def update_pokedex(gist_id: str, token: str, pokemon: Pokemon, status: str) -> None:
+def update_pokedex(
+    gist_id: str,
+    token: str,
+    pokemon: Pokemon,
+    status: str,
+    pr_url: str = "",
+    timestamp: str = "",
+) -> None:
     """
     Update the Pokédex in the GitHub Gist with the given Pokémon and status.
 
@@ -141,60 +162,67 @@ def update_pokedex(gist_id: str, token: str, pokemon: Pokemon, status: str) -> N
         token: A GitHub token with gist scope.
         pokemon: The Pokémon to add or update.
         status: Either "caught" or "seen".
-
-    Rules:
-        - If already caught, do not downgrade to seen.
-        - If caught, remove from the seen list.
-        - Both lists are sorted by Pokédex number after any update.
-
-    Raises:
-        requests.RequestException: On network errors.
-        ValueError: If the gist cannot be fetched or updated.
+        pr_url: URL of the PR where the event occurred.
+        timestamp: ISO 8601 UTC timestamp of the event.
     """
     if status not in ("caught", "seen"):
         raise ValueError(f"status must be 'caught' or 'seen', got {status!r}")
+
+    if not timestamp:
+        timestamp = _now_utc()
 
     pokedex, gist_html_url = load_pokedex(gist_id, token)
 
     caught: list[dict[str, Any]] = pokedex["caught"]
     seen: list[dict[str, Any]] = pokedex["seen"]
 
-    pokemon_entry: dict[str, Any] = {
-        "number": pokemon.number,
-        "name": pokemon.name,
-        "types": pokemon.types,
-    }
-
-    # Check if already in caught list
-    already_caught = any(e["number"] == pokemon.number for e in caught)
+    existing_caught = next((e for e in caught if e["number"] == pokemon.number), None)
+    existing_seen = next((e for e in seen if e["number"] == pokemon.number), None)
 
     if status == "caught":
-        if not already_caught:
-            # Add to caught
-            caught.append(pokemon_entry)
-        # Remove from seen regardless (caught supersedes seen)
+        if existing_caught:
+            # Already caught — just update caught timestamp/PR if missing
+            if not existing_caught.get("caught_at"):
+                existing_caught["caught_at"] = timestamp
+                existing_caught["caught_pr"] = pr_url
+        else:
+            entry: dict[str, Any] = {
+                "number": pokemon.number,
+                "name": pokemon.name,
+                "types": pokemon.types,
+                "caught_at": timestamp,
+                "caught_pr": pr_url,
+            }
+            # Carry over seen metadata if we have it
+            if existing_seen:
+                entry["seen_at"] = existing_seen.get("seen_at", "")
+                entry["seen_pr"] = existing_seen.get("seen_pr", "")
+            caught.append(entry)
+
+        # Remove from seen
         seen = [e for e in seen if e["number"] != pokemon.number]
 
     elif status == "seen":
-        if already_caught:
-            # Do not downgrade from caught to seen
-            return
-        already_seen = any(e["number"] == pokemon.number for e in seen)
-        if not already_seen:
-            seen.append(pokemon_entry)
+        if existing_caught:
+            return  # Do not downgrade
+        if not existing_seen:
+            seen.append({
+                "number": pokemon.number,
+                "name": pokemon.name,
+                "types": pokemon.types,
+                "seen_at": timestamp,
+                "seen_pr": pr_url,
+            })
 
-    # Sort both lists by number
     caught.sort(key=lambda e: e["number"])
     seen.sort(key=lambda e: e["number"])
 
     pokedex["caught"] = caught
     pokedex["seen"] = seen
 
-    # Build updated file contents
     pokedex_json_content = json.dumps(pokedex, indent=2, ensure_ascii=False) + "\n"
     pokedex_md_content = _build_pokedex_md(pokedex, gist_html_url)
 
-    # PATCH the gist
     payload = {
         "files": {
             POKEDEX_JSON_FILENAME: {"content": pokedex_json_content},

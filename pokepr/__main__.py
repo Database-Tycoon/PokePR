@@ -7,6 +7,7 @@ Pokémon encounters, catches, and escapes on GitHub PRs.
 
 import os
 import sys
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -40,6 +41,10 @@ def main() -> None:
     pr_merged = _get_env("PR_MERGED", required=False).lower() == "true"
     gist_id = _get_env("GIST_ID", required=False)
     gist_token = _get_env("GIST_TOKEN", required=False)
+
+    server_url = _get_env("GITHUB_SERVER_URL", required=False) or "https://github.com"
+    pr_url = f"{server_url}/{repo}/pull/{pr_number}"
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Gist is only usable if both ID and token are provided
     gist_configured = bool(gist_id and gist_token)
@@ -90,7 +95,7 @@ def main() -> None:
 
             if gist_configured:
                 try:
-                    update_pokedex(gist_id, gist_token, pokemon, "seen")
+                    update_pokedex(gist_id, gist_token, pokemon, "seen", pr_url, timestamp)
                     print(f"[pokepr] Marked {pokemon.name} as seen in Pokédex.")
                 except Exception as exc:
                     print(f"[pokepr] Warning: could not update Pokédex — {exc}")
@@ -103,7 +108,7 @@ def main() -> None:
 
                 if gist_configured:
                     try:
-                        update_pokedex(gist_id, gist_token, pokemon, "caught")
+                        update_pokedex(gist_id, gist_token, pokemon, "caught", pr_url, timestamp)
                         print(f"[pokepr] Marked {pokemon.name} as caught in Pokédex.")
                     except Exception as exc:
                         print(f"[pokepr] Warning: could not update Pokédex — {exc}")

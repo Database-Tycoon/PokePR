@@ -33,6 +33,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_ACTION: ${{ github.event.action }}
         PR_MERGED: ${{ github.event.pull_request.merged }}
