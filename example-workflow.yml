@@ -1,0 +1,18 @@
+name: PokéPR
+
+on:
+  pull_request:
+    types: [opened, reopened, closed]
+
+jobs:
+  pokepr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: Database-Tycoon/PokePR@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: track your Pokédex in a GitHub Gist
+          # gist-id: ${{ secrets.POKEDEX_GIST_ID }}
+          # gist-token: ${{ secrets.POKEDEX_GIST_TOKEN }}
