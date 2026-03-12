@@ -13,7 +13,18 @@ GITHUB_API_BASE = "https://api.github.com"
 MARKER = "<!-- pokepr-marker -->"
 
 STAT_ORDER = ["HP", "Attack", "Defense", "Sp. Atk", "Sp. Def", "Speed"]
-STAT_MAX = 255  # theoretical max for bar scaling
+MAX_LEVEL = 100
+
+
+def _stat_at_level(base: int, level: int, is_hp: bool) -> int:
+    """
+    Calculate a Pokémon's stat at a given level using the standard formula.
+    Assumes 0 IVs, 0 EVs, and neutral nature for simplicity.
+    """
+    level = max(1, min(level, MAX_LEVEL))
+    if is_hp:
+        return (2 * base * level // 100) + level + 10
+    return (2 * base * level // 100) + 5
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -103,8 +114,7 @@ def _type_str(types: list[str]) -> str:
     )
 
 
-def _stat_bar(value: int, max_val: int = STAT_MAX, width: int = 10) -> str:
-    """Render a simple block bar, e.g. '████░░░░░░ 45'"""
+def _stat_bar(value: int, max_val: int, width: int = 10) -> str:
     filled = round(value / max_val * width)
     return "█" * filled + "░" * (width - filled) + f" {value}"
 
@@ -119,15 +129,15 @@ def _abilities_str(pokemon: Pokemon) -> str:
     return " &nbsp;·&nbsp; ".join(parts)
 
 
-def _stats_table(pokemon: Pokemon) -> str:
+def _stats_table(pokemon: Pokemon, level: int) -> str:
+    """Render stats calculated at the given level, using the PR number as Lv."""
     rows = []
-    total = 0
+    max_stat = _stat_at_level(255, MAX_LEVEL, is_hp=True)  # scale bars against Lv.100 Blissey HP
     for stat in STAT_ORDER:
-        val = pokemon.base_stats.get(stat, 0)
-        total += val
-        rows.append(f"| {stat} | {_stat_bar(val)} |")
-    rows.append(f"| **Total** | **{total}** |")
-    header = "| Stat | |\n|------|---|"
+        base = pokemon.base_stats.get(stat, 0)
+        val = _stat_at_level(base, level, is_hp=(stat == "HP"))
+        rows.append(f"| {stat} | {_stat_bar(val, max_val=max_stat)} |")
+    header = f"| Stat (Lv. {level}) | |\n|------|---|"
     return header + "\n" + "\n".join(rows)
 
 
@@ -155,9 +165,10 @@ def build_encounter_comment(
 def build_caught_comment(
     pokemon: Pokemon, gist_html_url: Optional[str] = None
 ) -> str:
-    """Full Pokédex entry posted when a PR is merged — abilities, stats, the works."""
+    """Full Pokédex entry posted when a PR is merged — shiny sprite, abilities, levelled stats."""
+    level = 5
     return f"""{MARKER}
-<img align="right" src="{pokemon.sprite_url}" width="175" alt="{pokemon.name}"/>
+<img align="right" src="{pokemon.shiny_sprite_url}" width="175" alt="{pokemon.name}"/>
 
 ### 🔴 &nbsp; Pokédex #{pokemon.number:03d} &nbsp; — &nbsp; ✅ Caught!
 ## {pokemon.name}
@@ -169,7 +180,7 @@ def build_caught_comment(
 
 **Abilities:** {_abilities_str(pokemon)}
 
-{_stats_table(pokemon)}
+{_stats_table(pokemon, level)}
 
 ---
 🎉 &nbsp; Gotcha! **{pokemon.name}** was caught and registered in your Pokédex!
@@ -181,8 +192,9 @@ def build_fled_comment(
     pokemon: Pokemon, gist_html_url: Optional[str] = None
 ) -> str:
     """Full Pokédex entry posted when a PR is closed without merging."""
+    level = 5
     return f"""{MARKER}
-<img align="right" src="{pokemon.sprite_url}" width="175" alt="{pokemon.name}"/>
+<img align="right" src="{pokemon.shiny_sprite_url}" width="175" alt="{pokemon.name}"/>
 
 ### 🔴 &nbsp; Pokédex #{pokemon.number:03d} &nbsp; — &nbsp; 👀 Seen
 ## {pokemon.name}
@@ -194,7 +206,7 @@ def build_fled_comment(
 
 **Abilities:** {_abilities_str(pokemon)}
 
-{_stats_table(pokemon)}
+{_stats_table(pokemon, level)}
 
 ---
 💨 &nbsp; **{pokemon.name}** broke free and fled! It has been marked as seen in your Pokédex.

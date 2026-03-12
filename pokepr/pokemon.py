@@ -48,6 +48,7 @@ class Pokemon:
     height_m: float
     weight_kg: float
     sprite_url: str
+    shiny_sprite_url: str
     abilities: list[Ability]
     base_stats: dict[str, int]  # e.g. {"hp": 44, "attack": 48, ...}
 
@@ -112,10 +113,14 @@ def get_pokemon(pr_number: int) -> Pokemon:
     height_m = pokemon_data["height"] / 10
     weight_kg = pokemon_data["weight"] / 10
 
-    # Official artwork sprite
+    # Sprites — normal for encounter, shiny for caught/fled
     sprite_url = (
         f"https://raw.githubusercontent.com/PokeAPI/sprites/master/"
         f"sprites/pokemon/other/official-artwork/{pr_number}.png"
+    )
+    shiny_sprite_url = (
+        f"https://raw.githubusercontent.com/PokeAPI/sprites/master/"
+        f"sprites/pokemon/other/official-artwork/shiny/{pr_number}.png"
     )
 
     # Abilities (sorted by slot, flag hidden ones)
@@ -151,6 +156,7 @@ def get_pokemon(pr_number: int) -> Pokemon:
         height_m=height_m,
         weight_kg=weight_kg,
         sprite_url=sprite_url,
+        shiny_sprite_url=shiny_sprite_url,
         abilities=abilities,
         base_stats=base_stats,
     )
