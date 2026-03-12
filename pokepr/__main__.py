@@ -48,6 +48,7 @@ def main() -> None:
     try:
         from pokepr.pokemon import get_pokemon
         from pokepr.pr_comment import (
+            post_comment,
             post_or_update_comment,
             build_encounter_comment,
             build_caught_comment,
@@ -97,8 +98,8 @@ def main() -> None:
         elif pr_action == "closed":
             if pr_merged:
                 body = build_caught_comment(pokemon, gist_html_url)
-                post_or_update_comment(github_token, repo, pr_number, body)
-                print(f"[pokepr] Updated comment — {pokemon.name} was caught!")
+                post_comment(github_token, repo, pr_number, body)
+                print(f"[pokepr] Posted caught comment — {pokemon.name} was caught!")
 
                 if gist_configured:
                     try:
@@ -108,8 +109,8 @@ def main() -> None:
                         print(f"[pokepr] Warning: could not update Pokédex — {exc}")
             else:
                 body = build_fled_comment(pokemon, gist_html_url)
-                post_or_update_comment(github_token, repo, pr_number, body)
-                print(f"[pokepr] Updated comment — {pokemon.name} fled!")
+                post_comment(github_token, repo, pr_number, body)
+                print(f"[pokepr] Posted fled comment — {pokemon.name} fled!")
                 # Already marked as "seen" when the PR was opened — no further update needed.
 
     except Exception as exc:
